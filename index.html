@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lilies for you</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+/* VOICE: tender, a quiet late-night gift
+   IDEA: a bouquet "coded" out of glowing characters, like a terminal at night
+   PICTURE: ASCII lilies (pink, tiger, white) growing and opening, shimmering
+   COLOUR and TYPE: black ground, lily pink and tiger orange glyphs; Instrument Serif + JetBrains Mono
+   LAYOUT: full-screen canvas, title over the top, one button at the bottom */
+:root{color-scheme:dark;--ink:#fbe9f0;--mute:#b98aa0}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden}
+body{font:15px/1.5 "JetBrains Mono",ui-monospace,monospace}
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;cursor:grab;touch-action:none}
+.top{position:fixed;left:0;right:0;top:max(14px,3vh);text-align:center;pointer-events:none;padding:0 16px}
+.top h1{margin:0 auto;max-width:64ch;font:500 clamp(13px,1.6vw,16px)/1.6 "JetBrains Mono",monospace;color:#e8d6dd}
+.top h1 i,.to i{color:#f48fb1;font-style:normal}
+.to{margin:2px 0 0;font:500 13px "JetBrains Mono",monospace;color:var(--mute)}
+.bot{position:fixed;left:0;right:0;bottom:max(10px,2vh);display:flex;gap:6px 18px;justify-content:center;align-items:center;flex-wrap:wrap;padding:0 16px}
+button{font:500 14px "JetBrains Mono",monospace;min-height:44px;padding:0 4px;border:0;border-radius:0;background:none;color:#f48fb1;cursor:pointer}
+button:hover{color:#fff;text-decoration:underline}button:focus-visible{outline:1px dashed #f48fb1;outline-offset:2px}
+.hint{font-size:13px;color:#6f5560}
+.fade{animation:fade 1.2s ease both}
+.quote{position:fixed;left:50%;bottom:calc(max(10px,2vh) + 50px);transform:translateX(-50%);width:min(60ch,calc(100% - 24px));padding:12px 14px;background:#000;border:1px solid #6f3a50;font:500 13px/1.6 "JetBrains Mono",monospace;z-index:2}
+.quote .bar{display:flex;justify-content:space-between;align-items:center;color:#6f5560;margin:-6px -6px 6px 0}
+.quote blockquote{margin:0;color:#f4e4ea;font-size:clamp(13px,1.7vw,15px)}
+.quote blockquote::before{content:"> ";color:#f48fb1}
+.quote cite{display:block;margin-top:6px;font-style:normal;color:#f48fb1}
+.quote cite::before{content:"  ~ "}
+.quote .x{min-height:36px;padding:0 6px;color:#6f5560}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.fade{animation:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+{
+const html = htm.bind(React.createElement);
+const {useState, useEffect, useRef} = React;
+const RAMP = " .,:-=+*xoX#%@";
+const NOISE = "*+x%#@&$lily";
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TAU = Math.PI * 2;
+
+const QUOTES = [
+  ["She walks in beauty, like the night of cloudless climes and starry skies.", "Lord Byron"],
+  ["Shall I compare thee to a summer's day? Thou art more lovely and more temperate.", "William Shakespeare, Sonnet 18"],
+  ["Whatever our souls are made of, his and mine are the same.", "Emily Brontë, Wuthering Heights"],
+  ["You pierce my soul. I am half agony, half hope.", "Jane Austen, Persuasion"],
+  ["You must allow me to tell you how ardently I admire and love you.", "Jane Austen, Pride and Prejudice"],
+  ["My bounty is as boundless as the sea, my love as deep; the more I give to thee, the more I have, for both are infinite.", "William Shakespeare, Romeo and Juliet"],
+  ["Doubt thou the stars are fire; doubt that the sun doth move; doubt truth to be a liar; but never doubt I love.", "William Shakespeare, Hamlet"],
+  ["How do I love thee? Let me count the ways.", "Elizabeth Barrett Browning"],
+  ["Three such days with you I could fill with more delight than fifty common years could ever contain.", "John Keats, letter to Fanny Brawne"],
+  ["I have spread my dreams under your feet; tread softly because you tread on my dreams.", "W. B. Yeats"],
+  ["We loved with a love that was more than love.", "Edgar Allan Poe, Annabel Lee"],
+  ["Grow old along with me! The best is yet to be.", "Robert Browning"],
+  ["There is no remedy for love but to love more.", "Henry David Thoreau"],
+  ["The heart has its reasons which reason knows nothing of.", "Blaise Pascal"],
+  ["Life is the flower for which love is the honey.", "Victor Hugo"],
+  ["Love is composed of a single soul inhabiting two bodies.", "Attributed to Aristotle"],
+  ["Love looks not with the eyes, but with the mind.", "William Shakespeare, A Midsummer Night's Dream"],
+  ["Love is flower-like; Friendship is like a sheltering tree.", "Samuel Taylor Coleridge"],
+];
+
+// ---------- small vector helpers ----------
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const ease = v => v <= 0 ? 0 : v >= 1 ? 1 : 1 - (1 - v) ** 3;
+const inOut = v => v <= 0 ? 0 : v >= 1 ? 1 : v < .5 ? 4 * v ** 3 : 1 - (-2 * v + 2) ** 3 / 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const seeded = n => { let s = n * 9301 + 49297; return () => (s = (s * 9301 + 49297) % 233280) / 233280; };
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgb = (c, f, w = 0) => `rgb(${c.map(v => Math.round(Math.min(255, (v + (255 - v) * w) * f))).join(',')})`;
+
+// ---------- palettes ----------
+const PAL = {
+  pink:  {g:['#d0186a', '#ff66a8', '#ffe2ee'], spot:'#7a0838', an:'#8a3b12', n:8},
+  deep:  {g:['#b3123f', '#ff3c78', '#ffb8cf'], spot:'#5a0420', an:'#6b2a0e', n:8},
+  tiger: {g:['#e03a08', '#ff7a22', '#ffc77a'], spot:'#2a0803', an:'#4a1508', n:12},
+  white: {g:['#b7c96a', '#f5f1e2', '#ffffff'], spot:'#d6a7b2', an:'#9a4a16', n:5},
+};
+for (const p of Object.values(PAL)) p.rgb = p.g.map(hex);
+
+// ---------- the bouquet, laid out on a dome ----------
+const C = [0, 40, 0], BASE = [0, 372, 0], R = 190;
+const dirOf = (al, ph) => { al *= Math.PI / 180; ph *= Math.PI / 180; return [Math.sin(al) * Math.cos(ph), -Math.cos(al), Math.sin(al) * Math.sin(ph)]; };
+const basis = n => { const t1 = norm(cross(n, Math.abs(n[1]) < .9 ? [0, 1, 0] : [1, 0, 0])); return [t1, cross(n, t1)]; };
+const TYPES = ['pink', 'tiger', 'white', 'pink', 'deep', 'tiger', 'pink', 'white', 'tiger', 'deep'];
+const FL = [], BUDS = [], LEAVES = [], BREATH = [];
+{
+  const rings = [[0, [0], 1.08], [36, [0, 60, 120, 180, 240, 300], 1], [70, [22, 67, 112, 157, 202, 247, 292, 337], 1], [99, [5, 56, 108, 159, 210, 262, 313], .9]];
+  let i = 0;
+  for (const [al, phs, s] of rings) for (const ph of phs) {
+    const r = seeded(i * 13 + 5), d = dirOf(al + (r() - .5) * 8, ph + (r() - .5) * 10);
+    const p = PAL[TYPES[i % TYPES.length]];
+    FL.push({pos: add(C, mul(d, R * (al > 90 ? .94 : 1))), n: d, s: s * (.94 + r() * .12), p: TYPES[i % TYPES.length], twist: r() * 60,
+      d: .9 + (al / 99) * 1.1 + r() * .7,
+      spots: Array.from({length: 6}, () => Array.from({length: p.n}, () => [r() - .5, .12 + r() * .38, .6 + r() * .6])),
+      st: Array.from({length: 6}, (_, k) => [(30 + k * 60 + (r() - .5) * 16) * Math.PI / 180, .5 + r() * .12])});
+    i++;
+  }
+  for (let k = 0; k < 6; k++) { const d = dirOf(52, 30 + k * 60); BUDS.push({pos: add(C, mul(d, 212)), n: norm(add(d, [0, -.25, 0])), c: k % 2 ? 'tiger' : 'pink', d: 2.4 + k * .12}); }
+  for (let k = 0; k < 10; k++) { const d = dirOf(86, k * 36 + 18); LEAVES.push({a: add(C, mul(d, 70)), b: add(C, mul(d, 262)), m: add(C, mul(dirOf(80, k * 36 + 26), 170)), w: 13}); }
+  for (let k = 0; k < 13; k++) {
+    const ph = k * 27.7, al = 80 + (k * 37 % 25), r = seeded(k + 99);
+    const d = dirOf(80 + (k * 37 % 22), k * 27.7 + 10), c = add(C, mul(d, 222 + r() * 20));
+    BREATH.push(Array.from({length: 9}, () => add(c, [(r() - .5) * 34, (r() - .5) * 26, (r() - .5) * 34])));
+  }
+  for (let k = 0; k < 14; k++) {
+    const ph = k / 14 * TAU, rr = 150 + (k * 37 % 50);
+    LEAVES.push({a: [0, 330, 0], m: [Math.cos(ph) * rr * .4, 268, Math.sin(ph) * rr * .4], b: [Math.cos(ph) * rr, 175 + (k * 29 % 50), Math.sin(ph) * rr], w: 15, base: true});
+  }
+}
+
+// ---------- camera ----------
+const TILT = -.3, PERSP = 1500;
+let cA = 1, sA = 0;
+const cT = Math.cos(TILT), sT = Math.sin(TILT);
+const rotN = p => { const x = p[0] * cA + p[2] * sA, z = -p[0] * sA + p[2] * cA; return [x, p[1] * cT - z * sT, p[1] * sT + z * cT]; };
+const proj = p => { const r = rotN(p), s = PERSP / (PERSP - r[2]); return [r[0] * s, r[1] * s, r[2], s]; };
+
+// ---------- drawing ----------
+function petal(c, ctr, n, dir, side, L, W, o, pal, tiger, spots) {
+  const e1 = norm(add(mul(n, (1 - o) * 1.3), mul(dir, o + .05)));
+  const e3 = norm(cross(e1, side));
+  const w = W * (.35 + .65 * o), cup = .5 * o, rec = (tiger ? .95 : .55) * o;
+  const at = (s, x) => add(add(add(ctr, mul(e1, s * L)), mul(e3, L * (cup * s - rec * s * s))), mul(side, x));
+  const hw = s => w * .5 * Math.pow(Math.sin(Math.PI * Math.min(s * 1.04, 1)), .7) * (1 - .15 * s);
+  const N = 12, left = [], right = [];
+  for (let j = 0; j <= N; j++) { const s = j / N; left.push(proj(at(s, hw(s)))); right.push(proj(at(s, -hw(s)))); }
+  const facing = rotN(e3)[2], back = facing < 0, f = .86 + .3 * Math.abs(facing);
+  const b0 = proj(at(0, 0)), b1 = proj(at(1, 0));
+  const g = c.createLinearGradient(b0[0], b0[1], b1[0], b1[1]);
+  g.addColorStop(0, rgb(pal.rgb[0], f, back ? .15 : 0));
+  g.addColorStop(.4, rgb(pal.rgb[1], f, back ? .2 : 0));
+  g.addColorStop(1, rgb(pal.rgb[2], f, back ? .1 : 0));
+  c.beginPath(); c.moveTo(left[0][0], left[0][1]);
+  for (const p of left) c.lineTo(p[0], p[1]);
+  for (let j = right.length - 1; j >= 0; j--) c.lineTo(right[j][0], right[j][1]);
+  c.closePath(); c.fillStyle = g; c.fill();
+  c.strokeStyle = 'rgba(0,0,0,.95)'; c.lineWidth = 5; c.stroke();
+  // midrib
+  c.strokeStyle = back ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.4)'; c.lineWidth = 1.6;
+  c.beginPath(); for (let j = 1; j <= 10; j++) { const p = proj(at(j / 11, 0)); j === 1 ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]); } c.stroke();
+  if (!back && o > .4) {
+    c.fillStyle = pal.spot;
+    for (const [sx, s, sz] of spots) { const p = proj(at(s, sx * w * .5 * (1 - s))); c.beginPath(); c.arc(p[0], p[1], (tiger ? 2.8 : 2) * sz * p[3], 0, TAU); c.fill(); }
+  }
+}
+
+function drawFlower(c, f, o, jig) {
+  const pal = PAL[f.p], tiger = f.p === 'tiger', L = 84 * f.s, W = 50 * f.s;
+  const [t1, t2] = basis(f.n);
+  const ctr = add(f.pos, mul(t1, jig));
+  const petals = [];
+  for (let k = 0; k < 6; k++) {
+    const inner = k % 2, po = ease((o - (inner ? .12 : 0)) / .88);
+    if (po <= 0) continue;
+    const th = (k * 60 + f.twist) * Math.PI / 180;
+    const dir = add(mul(t1, Math.cos(th)), mul(t2, Math.sin(th)));
+    const side = cross(f.n, dir);
+    petals.push({z: rotN(add(ctr, mul(dir, L * .5)))[2] + (inner ? 2 : 0), args: [ctr, f.n, dir, side, inner ? L * .95 : L, inner ? W * .86 : W, po, pal, tiger, f.spots[k]]});
+  }
+  petals.sort((a, b) => a.z - b.z);
+  const so = ease((o - .45) / .55), front = rotN(f.n)[2] > -.1;
+  const stamens = () => {
+    if (so <= 0) return;
+    c.lineWidth = 1.6;
+    const p0 = proj(ctr);
+    for (const [th, len] of f.st) {
+      const dir = add(mul(t1, Math.cos(th)), mul(t2, Math.sin(th)));
+      const tip = proj(add(add(ctr, mul(f.n, L * len * .7 * so)), mul(dir, L * .24 * so)));
+      c.strokeStyle = '#ece6b4'; c.beginPath(); c.moveTo(p0[0], p0[1]); c.lineTo(tip[0], tip[1]); c.stroke();
+      c.fillStyle = pal.an; c.beginPath(); c.ellipse(tip[0], tip[1], 5.5 * f.s, 2.8 * f.s, th, 0, TAU); c.fill();
+    }
+    const pt = proj(add(ctr, mul(f.n, L * .62 * so)));
+    c.strokeStyle = '#b9d27a'; c.lineWidth = 2.2; c.beginPath(); c.moveTo(p0[0], p0[1]); c.lineTo(pt[0], pt[1]); c.stroke();
+    c.fillStyle = '#7fa04a'; c.beginPath(); c.arc(pt[0], pt[1], 3.4 * f.s, 0, TAU); c.fill();
+  };
+  if (!front) stamens();
+  for (const p of petals) petal(c, ...p.args);
+  if (front) { const p0 = proj(ctr); c.fillStyle = '#d9e68e'; c.beginPath(); c.arc(p0[0], p0[1], 7 * f.s * so, 0, TAU); c.fill(); stamens(); }
+}
+
+function blade(c, a, m, b, w, dark, light) {
+  const A = proj(a), M = proj(m), B = proj(b);
+  const dx = B[0] - A[0], dy = B[1] - A[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * w, ny = dx / l * w;
+  const g = c.createLinearGradient(A[0], A[1], B[0], B[1]); g.addColorStop(0, dark); g.addColorStop(1, light);
+  c.fillStyle = g; c.beginPath(); c.moveTo(A[0], A[1]);
+  c.quadraticCurveTo(M[0] + nx, M[1] + ny, B[0], B[1]);
+  c.quadraticCurveTo(M[0] - nx * .4, M[1] - ny * .4, A[0], A[1]); c.fill();
+}
+
+const screenPos = [];
+function scene(c, t, wig, angle) {
+  cA = Math.cos(angle); sA = Math.sin(angle);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  const grow = ease(t / 1.6);
+  // stems, always behind
+  c.strokeStyle = '#4f8a32'; c.lineWidth = 3.5;
+  for (const f of [...FL, ...BUDS]) {
+    const a = proj(BASE), b = proj(lerp3(BASE, f.pos, grow)), m = proj(lerp3(BASE, [f.pos[0] * .2, (f.pos[1] + BASE[1]) / 2, f.pos[2] * .2], grow));
+    c.beginPath(); c.moveTo(a[0], a[1]); c.quadraticCurveTo(m[0], m[1], b[0], b[1]); c.stroke();
+  }
+  const items = [];
+  const lg = ease((t - .3) / 1.6);
+  if (lg > 0) for (const L of LEAVES) {
+    const b = lerp3(L.a, L.b, lg), m = lerp3(L.a, L.m, lg);
+    items.push({z: rotN(lerp3(L.a, L.b, .6))[2] - (L.base ? 0 : 30), draw: () => blade(c, L.a, m, b, L.w, '#2f6a1e', '#9bd16a')});
+  }
+  const bb = ease((t - 2.4) / 1);
+  if (bb > 0) for (const cl of BREATH) items.push({z: rotN(cl[0])[2], draw: () => {
+    c.fillStyle = '#fff6fa';
+    for (const p of cl) { const q = proj(p); c.beginPath(); c.arc(q[0], q[1], 2.6 * bb * q[3], 0, TAU); c.fill(); }
+  }});
+  BUDS.forEach(b => {
+    const o = ease((t - b.d) / 1.2); if (o <= 0) return;
+    items.push({z: rotN(b.pos)[2], draw: () => {
+      const A = proj(b.pos), B = proj(add(b.pos, mul(b.n, 62 * o)));
+      const dx = B[0] - A[0], dy = B[1] - A[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * 11, ny = dx / l * 11;
+      const g = c.createLinearGradient(A[0], A[1], B[0], B[1]);
+      g.addColorStop(0, '#6f9a42'); g.addColorStop(.55, b.c === 'pink' ? '#e0729a' : '#ea7a30'); g.addColorStop(1, b.c === 'pink' ? '#ffc0d6' : '#ffb060');
+      c.fillStyle = g; c.beginPath(); c.moveTo(A[0], A[1]);
+      c.bezierCurveTo(A[0] + dx * .3 + nx, A[1] + dy * .3 + ny, A[0] + dx * .86 + nx * .6, A[1] + dy * .86 + ny * .6, B[0], B[1]);
+      c.bezierCurveTo(A[0] + dx * .86 - nx * .6, A[1] + dy * .86 - ny * .6, A[0] + dx * .3 - nx, A[1] + dy * .3 - ny, A[0], A[1]); c.fill();
+    }});
+  });
+  FL.forEach((f, i) => {
+    const o = clamp((t - f.d) / 1.4, 0, 1);
+    const p = proj(f.pos); screenPos[i] = p;
+    if (o <= 0) return;
+    const w = wig[i] != null ? t - wig[i] : 99;
+    const jig = w < 3 ? Math.sin(w * 20) * 10 * Math.exp(-w * 3.5) : 0;
+    items.push({z: p[2], draw: () => drawFlower(c, f, o, jig)});
+  });
+  items.sort((a, b) => a.z - b.z);
+  for (const it of items) it.draw();
+  // ribbon around the stems, always in front
+  if (lg > 0) {
+    const r = proj([0, 330, 0]);
+    c.globalAlpha = lg;
+    c.fillStyle = '#c2185b'; c.fillRect(r[0] - 30, r[1] - 12, 60, 24);
+    c.fillStyle = '#e0245e';
+    c.beginPath(); c.ellipse(r[0] - 26, r[1] - 2, 26, 12, -.3, 0, TAU); c.ellipse(r[0] + 26, r[1] - 2, 26, 12, .3, 0, TAU); c.fill();
+    c.fillStyle = '#a3134c';
+    c.beginPath(); c.moveTo(r[0] - 4, r[1]); c.lineTo(r[0] - 26, r[1] + 48); c.lineTo(r[0] - 12, r[1] + 44); c.closePath();
+    c.moveTo(r[0] + 4, r[1]); c.lineTo(r[0] + 26, r[1] + 48); c.lineTo(r[0] + 12, r[1] + 44); c.closePath(); c.fill();
+    c.fillStyle = '#ff6f9c'; c.beginPath(); c.arc(r[0], r[1] - 1, 9, 0, TAU); c.fill();
+    c.globalAlpha = 1;
+  }
+}
+
+// Spin plan: gentle sway while blooming, then a full 360 every 9 seconds
+const SPIN_AT = 5, CYCLE = 9, SPIN = 4.5;
+const angleAt = t => {
+  const sway = Math.sin(t * .5) * .14;
+  if (t < SPIN_AT) return sway;
+  const c = t - SPIN_AT, n = Math.floor(c / CYCLE), r = c - n * CYCLE;
+  return sway + TAU * (n + inOut(r / SPIN));
+};
+
+function useAscii(canvasRef, replayRef, pickRef) {
+  useEffect(() => {
+    const cv = canvasRef.current, ctx = cv.getContext('2d');
+    const off = document.createElement('canvas'), oc = off.getContext('2d', {willReadFrequently: true});
+    let W, H, fs, cw, ch, cols, rows, jit, stars, k, ox, oy, dpr, raf;
+    let start = performance.now(), wig = {}, ripples = [], drag = 0, down = null;
+    const size = () => {
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      W = innerWidth; H = innerHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      fs = clamp(W / 230, 5, 8.5); cw = fs * .6; ch = fs * .98;
+      cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+      off.width = cols; off.height = rows;
+      jit = new Int8Array(cols * rows);
+      const r = seeded(11);
+      stars = Array.from({length: Math.round(cols * rows * .012)}, () => [Math.floor(r() * cols), Math.floor(r() * rows), r() * 6, .5 + r() * 1.5]);
+      k = Math.min(W / 600, H * .74 / 620); ox = W / 2; oy = H * .58 - 100 * k;
+    };
+    size();
+    const now = () => reduce ? 9 : (performance.now() - start) / 1000;
+    const frame = () => {
+      const t = now();
+      oc.setTransform(1, 0, 0, 1, 0, 0); oc.clearRect(0, 0, cols, rows);
+      oc.setTransform(k / cw, 0, 0, k / ch, ox / cw, oy / ch);
+      scene(oc, t, wig, (reduce ? .5 : angleAt(t)) + drag);
+      const px = oc.getImageData(0, 0, cols, rows).data;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.font = `500 ${fs}px "JetBrains Mono", ui-monospace, monospace`; ctx.textBaseline = 'top';
+      if (!reduce) for (let n = 0; n < cols * rows * .04; n++) jit[(Math.random() * jit.length) | 0] = (Math.random() * 3 | 0) - 1;
+      ripples = ripples.filter(rp => t - rp.t < 1.6);
+      for (const [sx, sy, ph, sp] of stars) {
+        const b = .18 + .22 * Math.sin(t * sp + ph);
+        ctx.fillStyle = `rgba(255,236,245,${b})`;
+        ctx.fillText(b > .3 ? '*' : '.', sx * cw, sy * ch);
+      }
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x, p = i * 4, a = px[p + 3];
+        if (a < 12) continue;
+        const r = px[p], g = px[p + 1], b = px[p + 2];
+        let lum = (.3 * r + .59 * g + .11 * b) / 255 * (a / 255), glyph = null;
+        for (const rp of ripples) {
+          const d = Math.hypot(x * cw - rp.x, y * ch - rp.y), rad = (t - rp.t) * 420;
+          if (Math.abs(d - rad) < 18) { lum = Math.min(1, lum + .35); glyph = NOISE[(Math.random() * NOISE.length) | 0]; }
+        }
+        const idx = clamp(Math.round((a / 255) * (.5 + .5 * Math.sqrt(lum)) * (RAMP.length - 1)) + jit[i], 1, RAMP.length - 1);
+        const m = Math.max(r, g, b) || 1, s = Math.min(255 / m, 1.9);
+        ctx.fillStyle = `rgba(${r * s | 0},${g * s | 0},${b * s | 0},${.7 + .3 * lum})`;
+        ctx.fillText(glyph || RAMP[idx], x * cw, y * ch);
+      }
+      if (!reduce) raf = requestAnimationFrame(frame);
+    };
+    const redraw = () => { if (reduce) requestAnimationFrame(frame); };
+    const onDown = e => { down = {x: e.clientX, d: drag, moved: 0}; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; };
+    const onMove = e => { if (!down) return; const dx = e.clientX - down.x; down.moved = Math.max(down.moved, Math.abs(dx)); drag = down.d + dx * .012; redraw(); };
+    const onUp = e => {
+      if (!down) return;
+      cv.style.cursor = 'grab';
+      if (down.moved < 6) {
+        const t = now();
+        ripples.push({x: e.clientX, y: e.clientY, t});
+        const wx = (e.clientX - ox) / k, wy = (e.clientY - oy) / k;
+        let best = -1, bd = 80;
+        screenPos.forEach((p, i) => { const d = Math.hypot(p[0] - wx, p[1] - wy) - p[2] * .05; if (d < bd) { bd = d; best = i; } });
+        if (best >= 0) { wig[best] = t; pickRef.current(best); }
+      }
+      down = null; redraw();
+    };
+    replayRef.current = () => { start = performance.now(); wig = {}; ripples = []; drag = 0; redraw(); };
+    const onResize = () => { size(); redraw(); };
+    cv.addEventListener('pointerdown', onDown); cv.addEventListener('pointermove', onMove);
+    cv.addEventListener('pointerup', onUp); cv.addEventListener('pointercancel', onUp);
+    addEventListener('resize', onResize);
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { start = performance.now(); raf = requestAnimationFrame(frame); });
+    return () => { cancelAnimationFrame(raf); removeEventListener('resize', onResize); };
+  }, []);
+}
+
+const readName = () => {
+  const h = decodeURIComponent(location.hash.slice(1)).replace(/^for-/i, '').replace(/-/g, ' ').trim();
+  return h ? h.replace(/\b\w/g, c => c.toUpperCase()) : '';
+};
+
+function App() {
+  const cv = useRef(null), replay = useRef(() => {}), pick = useRef(() => {});
+  const [q, setQ] = useState(null);
+  pick.current = i => setQ({i: i % QUOTES.length, n: Date.now()});
+  const [name, setName] = useState(readName());
+  const [round, setRound] = useState(0);
+  useAscii(cv, replay, pick);
+  useEffect(() => {
+    const h = () => setName(readName());
+    addEventListener('hashchange', h);
+    return () => removeEventListener('hashchange', h);
+  }, []);
+  return html`<${React.Fragment}>
+    <canvas ref=${cv} role="img" aria-label="A full bouquet of pink, tiger and white lilies drawn in glowing text characters, opening and turning slowly against a starry night"></canvas>
+    <div className="top fade" key=${'t' + round}>
+      <h1>if i could have a flower each time i thought of <i>you</i>,<br/>i would walk through my garden till eternity</h1>
+      ${name ? html`<p className="to">// for <i>${name.toLowerCase()}</i></p>` : null}
+    </div>
+    ${q && html`<div className="quote" key=${q.n} role="dialog" aria-label="Love quote">
+      <div className="bar"><span>lily ${String(q.i + 1).padStart(2, '0')}/${QUOTES.length}</span><button className="x" aria-label="Close quote" onClick=${() => setQ(null)}>[x]</button></div>
+      <blockquote>"${QUOTES[q.i][0]}"</blockquote>
+      <cite>${QUOTES[q.i][1].toLowerCase()}</cite>
+    </div>`}
+    <div className="bot fade" style=${{animationDelay: '2.8s'}}>
+      <button onClick=${() => { replay.current(); setQ(null); setRound(r => r + 1); }}>[ bloom again ]</button>
+      <span className="hint">// tap a lily. drag to spin.</span>
+    </div>
+  </${React.Fragment}>`;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+}
+</script>
+</body>
+</html>
