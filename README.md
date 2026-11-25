@@ -12,4 +12,3 @@ Open `index.html` in a browser. No build step.
 
 - Tap a lily to read a love quote (18 of them).
 - Drag sideways to spin the bouquet.
-- Add a name to the URL: `index.html#for-amani` shows `// for amani` under the heading.
